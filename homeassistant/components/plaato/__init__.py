@@ -82,8 +82,7 @@ async def async_unload_entry(hass, entry):
     hass.components.webhook.async_unregister(entry.data[CONF_WEBHOOK_ID])
     hass.data[SENSOR_DATA_KEY]()
 
-    await hass.config_entries.async_forward_entry_unload(entry, SENSOR)
-    return True
+    return await hass.config_entries.async_forward_entry_unload(entry, SENSOR)
 
 
 async def handle_webhook(hass, webhook_id, request):

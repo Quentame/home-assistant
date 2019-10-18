@@ -48,14 +48,10 @@ async def async_setup_entry(hass, entry):
     hass.async_create_task(
         hass.config_entries.async_forward_entry_setup(entry, LIGHT_DOMAIN)
     )
-
     return True
 
 
 async def async_unload_entry(hass, entry):
     """Unload a config entry."""
     hass.data.pop(DATA_LIFX_MANAGER).cleanup()
-
-    await hass.config_entries.async_forward_entry_unload(entry, LIGHT_DOMAIN)
-
-    return True
+    return await hass.config_entries.async_forward_entry_unload(entry, LIGHT_DOMAIN)

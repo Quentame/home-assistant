@@ -63,5 +63,4 @@ async def async_setup_entry(hass, entry):
 async def async_unload_entry(hass, entry):
     """Unload the config entry and stop discovery process."""
     await async_stop_discovery_service(hass)
-    await hass.config_entries.async_forward_entry_unload(entry, "climate")
-    return True
+    return await hass.config_entries.async_forward_entry_unload(entry, "climate")

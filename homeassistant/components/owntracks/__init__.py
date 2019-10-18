@@ -110,10 +110,8 @@ async def async_setup_entry(hass, entry):
 async def async_unload_entry(hass, entry):
     """Unload an OwnTracks config entry."""
     hass.components.webhook.async_unregister(entry.data[CONF_WEBHOOK_ID])
-    await hass.config_entries.async_forward_entry_unload(entry, "device_tracker")
     hass.data[DOMAIN]["unsub"]()
-
-    return True
+    return await hass.config_entries.async_forward_entry_unload(entry, "device_tracker")
 
 
 async def async_remove_entry(hass, entry):

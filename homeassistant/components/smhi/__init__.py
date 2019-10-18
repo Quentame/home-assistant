@@ -25,5 +25,4 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    await hass.config_entries.async_forward_entry_unload(config_entry, "weather")
-    return True
+    return await hass.config_entries.async_forward_entry_unload(config_entry, "weather")

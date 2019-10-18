@@ -100,9 +100,9 @@ async def async_unload_entry(hass, config_entry):
     """Unload an WWLLN config entry."""
     hass.data[DOMAIN][DATA_CLIENT].pop(config_entry.entry_id)
 
-    await hass.config_entries.async_forward_entry_unload(config_entry, "geo_location")
-
-    return True
+    return await hass.config_entries.async_forward_entry_unload(
+        config_entry, "geo_location"
+    )
 
 
 async def async_migrate_entry(hass, config_entry):

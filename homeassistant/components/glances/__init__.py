@@ -81,9 +81,8 @@ async def async_setup_entry(hass, config_entry):
 
 async def async_unload_entry(hass, config_entry):
     """Unload a config entry."""
-    await hass.config_entries.async_forward_entry_unload(config_entry, "sensor")
     hass.data[DOMAIN].pop(config_entry.entry_id)
-    return True
+    return await hass.config_entries.async_forward_entry_unload(config_entry, "sensor")
 
 
 class GlancesData:
