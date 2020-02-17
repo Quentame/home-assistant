@@ -23,7 +23,11 @@ async def async_setup_entry(
 
     entities = []
     for device in hass.data[DOMAIN][username].devices.values():
-        if device.battery_level is not None:
+        if (
+            device.battery_status is not None
+            and "Charging" in device.battery_status
+            and device.battery_level is not None
+        ):
             _LOGGER.debug("Adding battery sensor for %s", device.name)
             entities.append(IcloudDeviceBatterySensor(device))
 
@@ -56,6 +60,10 @@ class IcloudDeviceBatterySensor(Entity):
     @property
     def state(self) -> int:
         """Battery state percentage."""
+        _LOGGER.error(self._device.name)
+        _LOGGER.error(self._device.device_status)
+        _LOGGER.error(self._device.battery_status)
+        _LOGGER.error(self._device.battery_level)
         return self._device.battery_level
 
     @property

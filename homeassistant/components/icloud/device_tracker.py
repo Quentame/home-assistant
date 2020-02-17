@@ -10,13 +10,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.typing import HomeAssistantType
 
 from .account import IcloudDevice
-from .const import (
-    DEVICE_LOCATION_HORIZONTAL_ACCURACY,
-    DEVICE_LOCATION_LATITUDE,
-    DEVICE_LOCATION_LONGITUDE,
-    DOMAIN,
-    SERVICE_UPDATE,
-)
+from .const import DOMAIN, SERVICE_UPDATE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,11 +29,11 @@ async def async_setup_entry(
     username = entry.data[CONF_USERNAME]
 
     for device in hass.data[DOMAIN][username].devices.values():
-        if device.location is None:
-            _LOGGER.debug("No position found for %s", device.name)
+        if device.latitude is None:
+            _LOGGER.warning("No position found for %s", device.name)
             continue
 
-        _LOGGER.debug("Adding device_tracker for %s", device.name)
+        _LOGGER.info("Adding device_tracker for %s", device.name)
 
         async_add_entities([IcloudTrackerEntity(device)])
 
@@ -65,17 +59,17 @@ class IcloudTrackerEntity(TrackerEntity):
     @property
     def location_accuracy(self):
         """Return the location accuracy of the device."""
-        return self._device.location[DEVICE_LOCATION_HORIZONTAL_ACCURACY]
+        return self._device.horizontal_accuracy
 
     @property
     def latitude(self):
         """Return latitude value of the device."""
-        return self._device.location[DEVICE_LOCATION_LATITUDE]
+        return self._device.latitude
 
     @property
     def longitude(self):
         """Return longitude value of the device."""
-        return self._device.location[DEVICE_LOCATION_LONGITUDE]
+        return self._device.longitude
 
     @property
     def battery_level(self) -> int:

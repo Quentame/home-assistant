@@ -6,10 +6,10 @@ from typing import Dict
 
 from pyicloud import PyiCloudService
 from pyicloud.exceptions import PyiCloudFailedLoginException, PyiCloudNoDevicesException
-from pyicloud.services.findmyiphone import AppleDevice
+from pyicloud.services.findmyiphone import DEVICE_STATUS_PENDING, AppleDevice
 
 from homeassistant.components.zone import async_active_zone
-from homeassistant.const import ATTR_ATTRIBUTION
+from homeassistant.const import ATTR_ATTRIBUTION, ATTR_LATITUDE, ATTR_LONGITUDE
 from homeassistant.helpers.dispatcher import dispatcher_send
 from homeassistant.helpers.event import track_point_in_utc_time
 from homeassistant.helpers.storage import Store
@@ -19,26 +19,7 @@ from homeassistant.util.async_ import run_callback_threadsafe
 from homeassistant.util.dt import utcnow
 from homeassistant.util.location import distance
 
-from .const import (
-    DEVICE_BATTERY_LEVEL,
-    DEVICE_BATTERY_STATUS,
-    DEVICE_CLASS,
-    DEVICE_DISPLAY_NAME,
-    DEVICE_ID,
-    DEVICE_LOCATION,
-    DEVICE_LOCATION_HORIZONTAL_ACCURACY,
-    DEVICE_LOCATION_LATITUDE,
-    DEVICE_LOCATION_LONGITUDE,
-    DEVICE_LOST_MODE_CAPABLE,
-    DEVICE_LOW_POWER_MODE,
-    DEVICE_NAME,
-    DEVICE_PERSON_ID,
-    DEVICE_RAW_DEVICE_MODEL,
-    DEVICE_STATUS,
-    DEVICE_STATUS_CODES,
-    DEVICE_STATUS_SET,
-    SERVICE_UPDATE,
-)
+from .const import SERVICE_UPDATE
 
 ATTRIBUTION = "Data provided by Apple iCloud"
 
@@ -104,22 +85,24 @@ class IcloudAccount:
             _LOGGER.error("Error logging into iCloud Service: %s", error)
             return
 
-        user_info = None
-        try:
-            # Gets device owners infos
-            user_info = self.api.devices.response["userInfo"]
-        except PyiCloudNoDevicesException:
-            _LOGGER.error("No iCloud device found")
-            return
+        # user_info = None
+        # try:
+        #     # Gets device owners infos
+        #     user_info = self.api.devices.response["userInfo"]
+        # except PyiCloudNoDevicesException:
+        #     _LOGGER.error("No iCloud device found")
+        #     return
 
-        self._owner_fullname = f"{user_info['firstName']} {user_info['lastName']}"
+        self._owner_fullname = (
+            None  # f"{user_info['firstName']} {user_info['lastName']}"
+        )
 
         self._family_members_fullname = {}
-        if user_info.get("membersInfo") is not None:
-            for prs_id, member in user_info["membersInfo"].items():
-                self._family_members_fullname[
-                    prs_id
-                ] = f"{member['firstName']} {member['lastName']}"
+        # if user_info.get("membersInfo") is not None:
+        #     for prs_id, member in user_info["membersInfo"].items():
+        #         self._family_members_fullname[
+        #             prs_id
+        #         ] = f"{member['firstName']} {member['lastName']}"
 
         self._devices = {}
         self.update_devices()
@@ -128,10 +111,12 @@ class IcloudAccount:
         """Update iCloud devices."""
         if self.api is None:
             return
+        fmi_service = self.api.find_my_iphone
 
         api_devices = {}
         try:
-            api_devices = self.api.devices
+            fmi_service.refresh_client()
+            api_devices = fmi_service.devices
         except PyiCloudNoDevicesException:
             _LOGGER.error("No iCloud device found")
             return
@@ -146,27 +131,39 @@ class IcloudAccount:
             )
             return
 
+        if (
+            fmi_service.device(0) is not None
+            and fmi_service.device(0).deviceStatus == DEVICE_STATUS_PENDING
+        ):
+            _LOGGER.error("Pending devices, fetching again in one minute.")
+            self._fetch_interval = 1
+            track_point_in_utc_time(
+                self.hass,
+                self.keep_alive,
+                utcnow() + timedelta(minutes=self._fetch_interval),
+            )
+            return
+
         # Gets devices infos
-        for device in api_devices:
-            status = device.status(DEVICE_STATUS_SET)
-            device_id = status[DEVICE_ID]
-            device_name = status[DEVICE_NAME]
+        for device in api_devices.values():
+            device_id = device.id
 
             if self._devices.get(device_id, None) is not None:
                 # Seen device -> updating
-                _LOGGER.debug("Updating iCloud device: %s", device_name)
-                self._devices[device_id].update(status)
+                _LOGGER.debug("Updating iCloud device: %s", device.name)
+                self._devices[device_id].update(device)
             else:
                 # New device, should be unique
                 _LOGGER.debug(
                     "Adding iCloud device: %s [model: %s]",
-                    device_name,
-                    status[DEVICE_RAW_DEVICE_MODEL],
+                    device.name,
+                    device.rawDeviceModel,
                 )
-                self._devices[device_id] = IcloudDevice(self, device, status)
-                self._devices[device_id].update(status)
+                self._devices[device_id] = IcloudDevice(self, device)
 
         self._fetch_interval = self._determine_interval()
+        # _LOGGER.error(self._fetch_interval)
+        # _LOGGER.error(self._devices)
         dispatcher_send(self.hass, SERVICE_UPDATE)
         track_point_in_utc_time(
             self.hass,
@@ -179,16 +176,16 @@ class IcloudAccount:
         intervals = {"default": self._max_interval}
         for device in self._devices.values():
             # Max interval if no location
-            if device.location is None:
+            if device.latitude is None:
                 continue
 
             current_zone = run_callback_threadsafe(
                 self.hass.loop,
                 async_active_zone,
                 self.hass,
-                device.location[DEVICE_LOCATION_LATITUDE],
-                device.location[DEVICE_LOCATION_LONGITUDE],
-                device.location[DEVICE_LOCATION_HORIZONTAL_ACCURACY],
+                device.latitude,
+                device.longitude,
+                device.horizontal_accuracy,
             ).result()
 
             # Max interval if in zone
@@ -202,13 +199,10 @@ class IcloudAccount:
 
             distances = []
             for zone_state in zones:
-                zone_state_lat = zone_state.attributes[DEVICE_LOCATION_LATITUDE]
-                zone_state_long = zone_state.attributes[DEVICE_LOCATION_LONGITUDE]
+                zone_state_lat = zone_state.attributes[ATTR_LATITUDE]
+                zone_state_long = zone_state.attributes[ATTR_LONGITUDE]
                 zone_distance = distance(
-                    device.location[DEVICE_LOCATION_LATITUDE],
-                    device.location[DEVICE_LOCATION_LONGITUDE],
-                    zone_state_lat,
-                    zone_state_long,
+                    device.latitude, device.longitude, zone_state_lat, zone_state_long,
                 )
                 distances.append(round(zone_distance / 1000, 1))
 
@@ -295,86 +289,65 @@ class IcloudAccount:
 class IcloudDevice:
     """Representation of a iCloud device."""
 
-    def __init__(self, account: IcloudAccount, device: AppleDevice, status):
+    def __init__(self, account: IcloudAccount, device: AppleDevice):
         """Initialize the iCloud device."""
         self._account = account
 
         self._device = device
-        self._status = status
 
-        self._name = self._status[DEVICE_NAME]
-        self._device_id = self._status[DEVICE_ID]
-        self._device_class = self._status[DEVICE_CLASS]
-        self._device_model = self._status[DEVICE_DISPLAY_NAME]
+        # self._name = device.name
+        # self._device_id = device.id
+        # self._device_class = device.deviceClass
+        # self._device_model = device.deviceDisplayName
 
-        if self._status[DEVICE_PERSON_ID]:
-            owner_fullname = account.family_members_fullname[
-                self._status[DEVICE_PERSON_ID]
-            ]
-        else:
-            owner_fullname = account.owner_fullname
+        # _LOGGER.error(self._name)
+        # _LOGGER.error(self._device_id)
+        # _LOGGER.error(self._device_class)
+        # _LOGGER.error(self._device_model)
 
-        self._battery_level = None
-        self._battery_status = None
-        self._location = None
+        # if device.prsId:
+        #     owner_fullname = account.family_members_fullname[
+        #         self._status[DEVICE_PERSON_ID]
+        #     ]
+        # else:
+        #     owner_fullname = account.owner_fullname
 
         self._attrs = {
             ATTR_ATTRIBUTION: ATTRIBUTION,
             ATTR_ACCOUNT_FETCH_INTERVAL: self._account.fetch_interval,
-            ATTR_DEVICE_NAME: self._device_model,
-            ATTR_DEVICE_STATUS: None,
-            ATTR_OWNER_NAME: owner_fullname,
+            ATTR_DEVICE_NAME: self.device_model,
+            ATTR_DEVICE_STATUS: self.device_status,
+            # ATTR_OWNER_NAME: owner_fullname,
+            ATTR_BATTERY_STATUS: self.battery_status,
+            ATTR_BATTERY: self.battery_level,
+            ATTR_LOW_POWER_MODE: device.lowPowerMode,
         }
 
-    def update(self, status) -> None:
+    def update(self, device: AppleDevice) -> None:
         """Update the iCloud device."""
-        self._status = status
+        self._device = device
 
-        self._status[ATTR_ACCOUNT_FETCH_INTERVAL] = self._account.fetch_interval
-
-        device_status = DEVICE_STATUS_CODES.get(self._status[DEVICE_STATUS], "error")
-        self._attrs[ATTR_DEVICE_STATUS] = device_status
-
-        self._battery_status = self._status[DEVICE_BATTERY_STATUS]
-        self._attrs[ATTR_BATTERY_STATUS] = self._battery_status
-        device_battery_level = self._status.get(DEVICE_BATTERY_LEVEL, 0)
-        if self._battery_status != "Unknown" and device_battery_level is not None:
-            self._battery_level = int(device_battery_level * 100)
-            self._attrs[ATTR_BATTERY] = self._battery_level
-            self._attrs[ATTR_LOW_POWER_MODE] = self._status[DEVICE_LOW_POWER_MODE]
-
-            if (
-                self._status[DEVICE_LOCATION]
-                and self._status[DEVICE_LOCATION][DEVICE_LOCATION_LATITUDE]
-            ):
-                location = self._status[DEVICE_LOCATION]
-                self._location = location
+        self._attrs[ATTR_DEVICE_STATUS] = self.device_status
+        self._attrs[ATTR_BATTERY_STATUS] = self.battery_status
+        self._attrs[ATTR_BATTERY] = self.battery_level
+        self._attrs[ATTR_LOW_POWER_MODE] = device.lowPowerMode
 
     def play_sound(self) -> None:
         """Play sound on the device."""
-        if self._account.api is None:
-            return
-
         self._account.api.authenticate()
         _LOGGER.debug("Playing sound for %s", self.name)
         self.device.play_sound()
 
     def display_message(self, message: str, sound: bool = False) -> None:
         """Display a message on the device."""
-        if self._account.api is None:
-            return
-
         self._account.api.authenticate()
         _LOGGER.debug("Displaying message for %s", self.name)
         self.device.display_message("Subject not working", message, sound)
 
     def lost_device(self, number: str, message: str) -> None:
         """Make the device in lost state."""
-        if self._account.api is None:
-            return
-
         self._account.api.authenticate()
-        if self._status[DEVICE_LOST_MODE_CAPABLE]:
+        if self._device.lostModeCapable:
             _LOGGER.debug("Make device lost for %s", self.name)
             self.device.lost_device(number, message, None)
         else:
@@ -383,12 +356,12 @@ class IcloudDevice:
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""
-        return self._device_id
+        return self._device.id
 
     @property
     def name(self) -> str:
         """Return the Apple device name."""
-        return self._name
+        return self._device.name
 
     @property
     def device(self) -> AppleDevice:
@@ -398,27 +371,44 @@ class IcloudDevice:
     @property
     def device_class(self) -> str:
         """Return the Apple device class."""
-        return self._device_class
+        return self._device.deviceClass
 
     @property
     def device_model(self) -> str:
         """Return the Apple device model."""
-        return self._device_model
+        return self._device.deviceDisplayName
+
+    @property
+    def device_status(self) -> str:
+        """Return the Apple device status."""
+        return self._device.deviceStatus
 
     @property
     def battery_level(self) -> int:
         """Return the Apple device battery level."""
-        return self._battery_level
+        device_battery_level = self._device.batteryLevel
+        if device_battery_level is not None:
+            return int(device_battery_level * 100)
 
     @property
     def battery_status(self) -> str:
         """Return the Apple device battery status."""
-        return self._battery_status
+        return self._device.batteryStatus
 
     @property
-    def location(self) -> Dict[str, any]:
-        """Return the Apple device location."""
-        return self._location
+    def horizontal_accuracy(self):
+        """Return the Apple device horizontal accuracy."""
+        return self._device.horizontalAccuracy
+
+    @property
+    def latitude(self):
+        """Return the Apple device latitude."""
+        return self._device.latitude
+
+    @property
+    def longitude(self):
+        """Return the Apple device longitude."""
+        return self._device.longitude
 
     @property
     def state_attributes(self) -> Dict[str, any]:
