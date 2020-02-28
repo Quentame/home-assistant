@@ -4,6 +4,7 @@ import logging
 import operator
 from typing import Dict
 
+from OpenSSL.SSL import SysCallError
 from pyicloud import PyiCloudService
 from pyicloud.exceptions import (
     PyiCloudFailedLoginException,
@@ -11,10 +12,11 @@ from pyicloud.exceptions import (
     PyiCloudServiceNotActivatedException,
 )
 from pyicloud.services.findmyiphone import AppleDevice
+from requests.exceptions import SSLError
+from urllib3.exceptions import MaxRetryError
 
 from homeassistant.components.zone import async_active_zone
 from homeassistant.const import ATTR_ATTRIBUTION
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.dispatcher import dispatcher_send
 from homeassistant.helpers.event import track_point_in_utc_time
 from homeassistant.helpers.storage import Store
@@ -79,7 +81,7 @@ class IcloudAccount:
         password: str,
         icloud_dir: Store,
         with_family: bool,
-        max_interval: int,
+        max_interval: float,
         gps_accuracy_threshold: int,
     ):
         """Initialize an iCloud account."""
@@ -116,21 +118,28 @@ class IcloudAccount:
             return
 
         try:
-            api_devices = self.api.devices
-            # Gets device owners infos
-            user_info = api_devices.response["userInfo"]
+            self.api.devices
         except (PyiCloudServiceNotActivatedException, PyiCloudNoDevicesException):
             _LOGGER.error("No iCloud device found")
-            raise ConfigEntryNotReady
+            # raise ConfigEntryNotReady
+        except SysCallError:
+            _LOGGER.error("setup:SYS_CALL_ERROR")
+            raise ValueError
+        except MaxRetryError:
+            _LOGGER.error("setup:MAX_RETRY_ERROR")
+            raise ValueError
+        except SSLError:
+            _LOGGER.error("setup:SSL_ERROR")
+            raise ValueError
 
-        self._owner_fullname = f"{user_info['firstName']} {user_info['lastName']}"
+        # self._owner_fullname = f"{user_info['firstName']} {user_info['lastName']}"
 
-        self._family_members_fullname = {}
-        if user_info.get("membersInfo") is not None:
-            for prs_id, member in user_info["membersInfo"].items():
-                self._family_members_fullname[
-                    prs_id
-                ] = f"{member['firstName']} {member['lastName']}"
+        # self._family_members_fullname = {}
+        # if user_info.get("membersInfo") is not None:
+        #     for prs_id, member in user_info["membersInfo"].items():
+        #         self._family_members_fullname[
+        #             prs_id
+        #         ] = f"{member['firstName']} {member['lastName']}"
 
         self._devices = {}
         self.update_devices()
@@ -143,6 +152,17 @@ class IcloudAccount:
         api_devices = {}
         try:
             api_devices = self.api.devices
+        except (PyiCloudServiceNotActivatedException, PyiCloudNoDevicesException):
+            _LOGGER.error("No iCloud device found-2")
+        except SysCallError:
+            _LOGGER.error("update_devices:SYS_CALL_ERROR")
+            raise ValueError
+        except MaxRetryError:
+            _LOGGER.error("update_devices:MAX_RETRY_ERROR")
+            raise ValueError
+        except SSLError:
+            _LOGGER.error("update_devices:SSL_ERROR")
+            raise ValueError
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error("Unknown iCloud error: %s", err)
             self._fetch_interval = 2
@@ -182,16 +202,17 @@ class IcloudAccount:
                 self._devices[device_id].update(status)
                 new_device = True
 
-        if (
-            DEVICE_STATUS_CODES.get(list(api_devices)[0][DEVICE_STATUS]) == "pending"
-            and not self._retried_fetch
-        ):
-            _LOGGER.warning("Pending devices, trying again in 15s")
-            self._fetch_interval = 0.25
-            self._retried_fetch = True
-        else:
-            self._fetch_interval = self._determine_interval()
-            self._retried_fetch = False
+        # if (
+        #     DEVICE_STATUS_CODES.get(list(api_devices)[0][DEVICE_STATUS]) == "pending"
+        #     and not self._retried_fetch
+        # ):
+        #     _LOGGER.warning("Pending devices, trying again in 15s")
+        #     self._fetch_interval = 0.25
+        #     self._retried_fetch = True
+        # else:
+        self._fetch_interval = self._max_interval
+        _LOGGER.warning(self._fetch_interval)
+        self._retried_fetch = False
 
         dispatcher_send(self.hass, self.signal_device_update)
         if new_device:
@@ -281,7 +302,17 @@ class IcloudAccount:
         if self.api is None:
             return
 
-        self.api.authenticate()
+        try:
+            self.api.authenticate()
+        except SysCallError:
+            _LOGGER.error("keep_alive:SYS_CALL_ERROR")
+            raise ValueError
+        except MaxRetryError:
+            _LOGGER.error("keep_alive:MAX_RETRY_ERROR")
+            raise ValueError
+        except SSLError:
+            _LOGGER.error("keep_alive:SSL_ERROR")
+            raise ValueError
         self.update_devices()
 
     def get_devices_with_name(self, name: str) -> [any]:
