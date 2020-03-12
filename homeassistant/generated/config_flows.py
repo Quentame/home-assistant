@@ -104,6 +104,7 @@ FLOWS = [
     "soma",
     "somfy",
     "sonos",
+    "speedtestdotnet",
     "spotify",
     "starline",
     "tellduslive",
