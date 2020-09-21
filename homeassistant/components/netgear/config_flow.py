@@ -1,7 +1,7 @@
 """Config flow to configure the Netgear integration."""
-import asyncio
+# import asyncio
 
-from pynetgear import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_USER, Netgear, autodetect_url
+from pynetgear import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_USER, Netgear
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -15,7 +15,6 @@ from homeassistant.const import (
     CONF_URL,
     CONF_USERNAME,
 )
-from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN  # pylint: disable=unused-import
 
@@ -62,7 +61,7 @@ class NetgearFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if not user_input:
             user_input = {}
 
-        if self.placeholders.get(CONF_URL) != "url_not_found":
+        if self.placeholders.get(CONF_URL):
             user_input.update({CONF_URL: self.placeholders[CONF_URL]})
             step_id = "link"
             data_schema = _discovery_schema_with_defaults(user_input)
@@ -84,14 +83,11 @@ class NetgearFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input and not self.placeholders.get(CONF_URL):
             self.placeholders[CONF_URL] = user_input.get(CONF_URL)
 
-        if self.placeholders.get(CONF_URL) is None:
-            return await self.async_step_discover()
-
         if not user_input:
             return await self._show_setup_form(user_input, errors)
 
         url = None
-        if self.placeholders.get(CONF_URL) != "url_not_found":
+        if self.placeholders.get(CONF_URL):
             url = self.placeholders.get(CONF_URL)
         host = user_input.get(CONF_HOST)
         port = user_input.get(CONF_PORT)
@@ -130,39 +126,25 @@ class NetgearFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data=config_data,
         )
 
-    async def async_step_discover(self, user_input=None):
-        """Discover host, port and SSL."""
-        if user_input is None:
-            return self.async_show_form(step_id="discover")
-
-        url = await self.hass.async_add_executor_job(autodetect_url)
-        self.placeholders[CONF_URL] = url or "url_not_found"
-        return await self.async_step_user()
+    async def async_step_import(self, user_input=None):
+        """Import a config entry."""
+        return await self.async_step_user(user_input)
 
     async def async_step_ssdp(self, discovery_info):
         """Handle a discovered device."""
         # brief delay to allow processing the import step first
-        await asyncio.sleep(6)
+        # await asyncio.sleep(6)
 
         await self.async_set_unique_id(discovery_info[ssdp.ATTR_UPNP_SERIAL])
         self._abort_if_unique_id_configured()
 
         self.placeholders[CONF_NAME] = discovery_info[ssdp.ATTR_UPNP_MODEL_NUMBER]
         self.placeholders[CONF_URL] = discovery_info[ssdp.ATTR_UPNP_PRESENTATION_URL]
-        return await self.async_step_user()
+        return await self.async_step_link()
 
-    async def async_step_import(self, user_input=None):
-        """Import a config entry."""
-        if not user_input.get(CONF_HOST):
-            url = await self.hass.async_add_executor_job(autodetect_url)
-            self.placeholders[CONF_URL] = url or "url_not_found"
-
-        return await self.async_step_user(user_input)
-
-    async def async_step_link(self, user_input):
+    async def async_step_link(self, user_input=None):
         """Link a config entry from discovery."""
+        if not user_input:
+            return await self._show_setup_form(user_input)
+
         return await self.async_step_user(user_input)
-
-
-class InvalidConfig(HomeAssistantError):
-    """Error to indicate there is invalid config."""
