@@ -147,6 +147,7 @@ FLOWS = {
         "enphase_envoy",
         "environment_canada",
         "epion",
+        "epic_games_store",
         "epson",
         "escea",
         "esphome",
