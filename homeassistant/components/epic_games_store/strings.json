@@ -33,5 +33,11 @@
         }
       }
     }
+  },
+  "services": {
+    "data": {
+      "name": "Data",
+      "description": "Gets the free and discount games data."
+    }
   }
 }
