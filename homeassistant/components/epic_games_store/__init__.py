@@ -1,6 +1,9 @@
 """The Epic Games Store integration."""
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import (
@@ -9,10 +12,10 @@ from homeassistant.core import (
     ServiceResponse,
     SupportsResponse,
 )
-from homeassistant.util.json import JsonObjectType
+from homeassistant.util.json import JsonArrayType
 
 from .const import DOMAIN, SERVICE_DATA
-from .coordinator import EGSCalendarUpdateCoordinator
+from .coordinator import CalendarType, EGSCalendarUpdateCoordinator
 
 PLATFORMS: list[Platform] = [
     Platform.CALENDAR,
@@ -32,9 +35,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Services
     def async_data(call: ServiceCall) -> ServiceResponse:
         """Handle data service call."""
+        search: str | None = call.data.get("search")
+        games = sorted(
+            [
+                *coordinator.data[CalendarType.DISCOUNT],
+                *coordinator.data[CalendarType.FREE],
+            ],
+            key=lambda game: game["discount_start_at"],
+        )
+        if search:
+            if search in [
+                CalendarType.DISCOUNT,
+                CalendarType.FREE,
+            ]:
+                return {
+                    search: __serialize_data(coordinator.data[search]),
+                }
+
+            filtered_games = list(
+                filter(
+                    lambda game: game.get("title") == search
+                    or game.get("publisher") == search,
+                    games,
+                )
+            )
+            if filtered_games:
+                return {"search": __serialize_data(filtered_games)}
         return {
-            **__serialize_data(coordinator, "discount"),
-            **__serialize_data(coordinator, "free"),
+            "all": __serialize_data(games),
         }
 
     hass.services.async_register(
@@ -56,13 +84,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-def __serialize_data(
-    coordinator: EGSCalendarUpdateCoordinator, cal_type: str
-) -> JsonObjectType:
+def __serialize_data(games: list[dict[str, Any]]) -> JsonArrayType:
     """Serialize data to service response."""
-    return {
-        cal_type: [
-            {str(key): str(value) for key, value in games.items()}
-            for games in coordinator.data[cal_type]
-        ]
-    }
+    return [
+        {
+            str(key): str(value) if isinstance(value, datetime) else value
+            for key, value in game.items()
+        }
+        for game in games
+    ]

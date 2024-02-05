@@ -1,1 +1,6 @@
 data:
+  fields:
+    search:
+      example: "free"
+      selector:
+        text:

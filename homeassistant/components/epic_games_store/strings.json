@@ -36,8 +36,14 @@
   },
   "services": {
     "data": {
-      "name": "Data",
-      "description": "Gets the free and discount games data."
+      "name": "Get games data",
+      "description": "Gets the free and discount games data.",
+      "fields": {
+        "search": {
+          "name": "Search",
+          "description": "Search for a game offer ('discount' or 'free'), title or publisher. Display all fetched games if not set."
+        }
+      }
     }
   }
 }
