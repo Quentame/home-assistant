@@ -17,20 +17,10 @@
   "entity": {
     "calendar": {
       "free_games": {
-        "name": "Free games",
-        "state_attributes": {
-          "games": {
-            "name": "Games"
-          }
-        }
+        "name": "Free games"
       },
       "discount_games": {
-        "name": "Discount games",
-        "state_attributes": {
-          "games": {
-            "name": "[%key:component::epic_games_store::entity::calendar::free_games::state_attributes::games::name%]"
-          }
-        }
+        "name": "Discount games"
       }
     }
   }
