@@ -1,4 +1,4 @@
-"""Meteo-France component constants."""
+"""Météo-France component constants."""
 
 from __future__ import annotations
 
@@ -27,13 +27,18 @@ COORDINATOR_FORECAST = "coordinator_forecast"
 COORDINATOR_RAIN = "coordinator_rain"
 COORDINATOR_ALERT = "coordinator_alert"
 UNDO_UPDATE_LISTENER = "undo_update_listener"
+
 ATTRIBUTION = "Data provided by Météo-France"
 MODEL = "Météo-France mobile API"
 MANUFACTURER = "Météo-France"
 
-CONF_CITY = "city"
 FORECAST_MODE_HOURLY = "hourly"
 FORECAST_MODE_DAILY = "daily"
+
+CONF_CITY = "city"
+CONF_FOLLOW = "follow"
+CONF_TYPE = "type"
+CONF_TYPES = [CONF_CITY, CONF_FOLLOW]
 
 ATTR_NEXT_RAIN_1_HOUR_FORECAST = "1_hour_forecast"
 ATTR_NEXT_RAIN_DT_REF = "forecast_time_ref"

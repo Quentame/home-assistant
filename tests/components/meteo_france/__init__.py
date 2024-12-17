@@ -1,1 +1,1 @@
-"""Tests for the Meteo-France component."""
+"""Tests for the Météo-France component."""

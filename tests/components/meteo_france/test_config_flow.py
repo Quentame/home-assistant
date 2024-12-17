@@ -1,4 +1,4 @@
-"""Tests for the Meteo-France config flow."""
+"""Tests for the Météo-France config flow."""
 
 from unittest.mock import patch
 

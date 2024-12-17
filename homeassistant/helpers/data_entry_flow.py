@@ -34,6 +34,8 @@ class _BaseFlowManagerView(HomeAssistantView, Generic[_FlowManagerT]):
         self, result: data_entry_flow.FlowResult
     ) -> data_entry_flow.FlowResult:
         """Convert result to JSON."""
+        print("_prepare_result_json --------")
+        print(result)
         if result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY:
             data = result.copy()
             data.pop("result")
@@ -49,6 +51,8 @@ class _BaseFlowManagerView(HomeAssistantView, Generic[_FlowManagerT]):
         if (schema := data["data_schema"]) is None:
             data["data_schema"] = []  # type: ignore[typeddict-item]  # json result type
         else:
+            print("schema")
+            print(schema)
             data["data_schema"] = voluptuous_serialize.convert(
                 schema, custom_serializer=cv.custom_serializer
             )

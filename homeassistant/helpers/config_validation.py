@@ -1125,12 +1125,15 @@ def _custom_serializer(schema: Any, *, allow_section: bool) -> Any:
     from . import selector  # pylint: disable=import-outside-toplevel
 
     if schema is positive_time_period_dict:
+        print("positive_time_period_dict")
         return {"type": "positive_time_period_dict"}
 
     if schema is string:
+        print("string")
         return {"type": "string"}
 
     if schema is boolean:
+        print("boolean")
         return {"type": "boolean"}
 
     if isinstance(schema, data_entry_flow.section):
@@ -1148,9 +1151,11 @@ def _custom_serializer(schema: Any, *, allow_section: bool) -> Any:
         }
 
     if isinstance(schema, multi_select):
+        print("multi_select")
         return {"type": "multi_select", "options": schema.options}
 
     if isinstance(schema, selector.Selector):
+        print("selector")
         return schema.serialize()
 
     return voluptuous_serialize.UNSUPPORTED

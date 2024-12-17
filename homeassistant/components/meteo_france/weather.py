@@ -1,4 +1,4 @@
-"""Support for Meteo-France weather service."""
+"""Support for Météo-France weather service."""
 
 import logging
 import time
@@ -14,6 +14,7 @@ from homeassistant.components.weather import (
     ATTR_FORECAST_NATIVE_WIND_SPEED,
     ATTR_FORECAST_TIME,
     ATTR_FORECAST_WIND_BEARING,
+    DOMAIN as WEATHER_DOMAIN,
     Forecast,
     WeatherEntity,
     WeatherEntityFeature,
@@ -29,22 +30,22 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTRIBUTION,
     CONDITION_MAP,
-    COORDINATOR_FORECAST,
     DOMAIN,
     FORECAST_MODE_DAILY,
     FORECAST_MODE_HOURLY,
     MANUFACTURER,
     MODEL,
+    CONF_CITY,
+    CONF_FOLLOW,
 )
+from .coordinator import MeteoFranceDataUpdateCoordinator
+from .models import CityData, DomainData, FollowData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,14 +58,14 @@ def format_condition(condition: str):
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up the Meteo-France weather platform."""
-    coordinator: DataUpdateCoordinator[MeteoFranceForecast] = hass.data[DOMAIN][
-        entry.entry_id
-    ][COORDINATOR_FORECAST]
+    """Set up the Météo-France weather platform."""
+    data: DomainData = hass.data[DOMAIN][entry.entry_id]
+    coordinator: MeteoFranceDataUpdateCoordinator[MeteoFranceForecast] = data.forecast
 
     async_add_entities(
         [
             MeteoFranceWeather(
+                data.conf,
                 coordinator,
                 entry.options.get(CONF_MODE, FORECAST_MODE_DAILY),
             )
@@ -79,7 +80,8 @@ async def async_setup_entry(
 
 
 class MeteoFranceWeather(
-    CoordinatorEntity[DataUpdateCoordinator[MeteoFranceForecast]], WeatherEntity
+    CoordinatorEntity[MeteoFranceDataUpdateCoordinator[MeteoFranceForecast]],
+    WeatherEntity,
 ):
     """Representation of a weather condition."""
 
@@ -93,13 +95,22 @@ class MeteoFranceWeather(
     )
 
     def __init__(
-        self, coordinator: DataUpdateCoordinator[MeteoFranceForecast], mode: str
+        self,
+        conf: CityData | FollowData,
+        coordinator: MeteoFranceDataUpdateCoordinator[MeteoFranceForecast],
+        mode: str,
     ) -> None:
         """Initialise the platform with a data instance and station name."""
         super().__init__(coordinator)
-        self._city_name = self.coordinator.data.position["name"]
         self._mode = mode
-        self._unique_id = f"{self.coordinator.data.position['lat']},{self.coordinator.data.position['lon']}"
+        self._conf = conf
+
+        if conf.type == CONF_CITY:
+            self._attr_unique_id = f"{conf.latitude},{conf.longitude}"
+            self.entity_id = f"{WEATHER_DOMAIN}.{conf.city}"
+        elif conf.type == CONF_FOLLOW:
+            self._attr_unique_id = f"{conf.type};{conf.entity_id}"
+            self.entity_id = f"{WEATHER_DOMAIN}.{conf.type}_{conf.entity_id}"
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -111,14 +122,19 @@ class MeteoFranceWeather(
         )
 
     @property
-    def unique_id(self) -> str:
-        """Return the unique id of the sensor."""
-        return self._unique_id
+    def city_name(self) -> str:
+        """Return the current city name (changing only on conf type 'follow')."""
+        data: DomainData | None = self.hass.data[DOMAIN].get(
+            self.platform.config_entry.unique_id
+        )
+        if data:
+            return data.conf.city
+        return self._conf.city
 
     @property
-    def name(self):
-        """Return the name of the sensor."""
-        return self._city_name
+    def name(self) -> str:
+        """Return the name."""
+        return self.city_name
 
     @property
     def device_info(self) -> DeviceInfo:

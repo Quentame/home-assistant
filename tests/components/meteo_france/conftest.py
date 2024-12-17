@@ -1,4 +1,4 @@
-"""Meteo-France generic test utils."""
+"""Météo-France generic test utils."""
 
 from unittest.mock import patch
 
